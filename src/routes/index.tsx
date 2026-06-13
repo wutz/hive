@@ -1,12 +1,89 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
+import { initializeApp, getMessages, sendMessage } from '#/api/functions'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
+  loader: async () => {
+    const init = await initializeApp({})
+    return init
+  },
 })
 
+interface Channel {
+  id: string
+  name: string
+  description: string | null
+}
+
+interface Message {
+  id: string
+  content: string
+  createdAt: Date | null
+  userId: string
+  userName: string
+  userType: string
+}
+
 function HomePage() {
+  const { channels: initialChannels, currentUser } = Route.useLoaderData()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [channels] = useState<Channel[]>(initialChannels)
+  const [activeChannelId, setActiveChannelId] = useState<string>(initialChannels[0]?.id || '')
+  const [msgs, setMsgs] = useState<Message[]>([])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval>>(undefined)
+
+  const activeChannel = channels.find(c => c.id === activeChannelId)
+
+  // Load messages for active channel
+  useEffect(() => {
+    if (!activeChannelId) return
+
+    const loadMessages = async () => {
+      const result = await getMessages({ data: { channelId: activeChannelId } })
+      setMsgs(result as Message[])
+    }
+
+    loadMessages()
+
+    // Poll for new messages every 2 seconds
+    pollRef.current = setInterval(loadMessages, 2000)
+    return () => clearInterval(pollRef.current)
+  }, [activeChannelId])
+
+  // Scroll to bottom on new messages
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [msgs.length])
+
+  const handleSend = async () => {
+    if (!input.trim() || !activeChannelId || !currentUser) return
+
+    const content = input.trim()
+    setInput('')
+    setLoading(true)
+
+    await sendMessage({ data: { channelId: activeChannelId, userId: currentUser.id, content } })
+    const result = await getMessages({ data: { channelId: activeChannelId } })
+    setMsgs(result as Message[])
+    setLoading(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
+  }
+
+  const switchChannel = (channelId: string) => {
+    setActiveChannelId(channelId)
+    setMsgs([])
+    setSidebarOpen(false)
+  }
 
   return (
     <div className="flex h-screen relative">
@@ -27,14 +104,21 @@ function HomePage() {
           </button>
         </div>
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          <ChannelItem name="general" active />
-          <ChannelItem name="engineering" />
-          <ChannelItem name="design" />
+          {channels.map(ch => (
+            <ChannelItem
+              key={ch.id}
+              name={ch.name}
+              active={ch.id === activeChannelId}
+              onClick={() => switchChannel(ch.id)}
+            />
+          ))}
         </nav>
         <div className="p-3 border-t border-gray-800">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-sm font-medium">U</div>
-            <span className="text-sm text-gray-300">User</span>
+            <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-sm font-medium">
+              {currentUser?.name?.[0] || 'U'}
+            </div>
+            <span className="text-sm text-gray-300">{currentUser?.name || 'User'}</span>
           </div>
         </div>
       </aside>
@@ -46,17 +130,32 @@ function HomePage() {
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" /></svg>
           </button>
           <span className="text-gray-400 mr-2">#</span>
-          <span className="font-medium">general</span>
+          <span className="font-medium">{activeChannel?.name || 'general'}</span>
         </header>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          <Message sender="Alice" content="Welcome to Hive! This is where humans and agents collaborate." time="09:00" />
-          <Message sender="Agent" content="I'm an AI agent ready to help. Ask me anything or assign me tasks." time="09:01" isAgent />
+          {msgs.length === 0 && (
+            <p className="text-center text-gray-500 mt-8">No messages yet. Start the conversation!</p>
+          )}
+          {msgs.map(msg => (
+            <MessageBubble
+              key={msg.id}
+              sender={msg.userName}
+              content={msg.content}
+              time={msg.createdAt ? new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+              isAgent={msg.userType === 'agent'}
+            />
+          ))}
+          <div ref={messagesEndRef} />
         </div>
         <div className="p-3 md:p-4 border-t border-gray-800">
           <input
             type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
             placeholder="Type a message..."
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-indigo-500"
+            disabled={loading}
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-indigo-500 disabled:opacity-50"
           />
         </div>
       </main>
@@ -64,16 +163,19 @@ function HomePage() {
   )
 }
 
-function ChannelItem({ name, active }: { name: string; active?: boolean }) {
+function ChannelItem({ name, active, onClick }: { name: string; active?: boolean; onClick: () => void }) {
   return (
-    <div className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm cursor-pointer ${active ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}`}>
+    <div
+      onClick={onClick}
+      className={`flex items-center gap-2 px-3 py-1.5 rounded text-sm cursor-pointer ${active ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50'}`}
+    >
       <span className="text-gray-500">#</span>
       <span>{name}</span>
     </div>
   )
 }
 
-function Message({ sender, content, time, isAgent }: { sender: string; content: string; time: string; isAgent?: boolean }) {
+function MessageBubble({ sender, content, time, isAgent }: { sender: string; content: string; time: string; isAgent?: boolean }) {
   return (
     <div className="flex gap-3">
       <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-medium shrink-0 ${isAgent ? 'bg-emerald-600' : 'bg-indigo-600'}`}>
@@ -85,7 +187,7 @@ function Message({ sender, content, time, isAgent }: { sender: string; content: 
           {isAgent && <span className="text-[10px] px-1.5 py-0.5 bg-emerald-900/50 text-emerald-400 rounded">Agent</span>}
           <span className="text-xs text-gray-500">{time}</span>
         </div>
-        <p className="text-sm text-gray-300 mt-0.5 break-words">{content}</p>
+        <p className="text-sm text-gray-300 mt-0.5 break-words whitespace-pre-wrap">{content}</p>
       </div>
     </div>
   )
