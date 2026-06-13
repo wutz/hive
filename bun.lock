@@ -4,13 +4,13 @@
     "": {
       "name": "hive",
       "dependencies": {
-        "@libsql/client": "^0.17.3",
         "@tailwindcss/vite": "^4.1.18",
         "@tanstack/react-router": "^1.120.20",
         "@tanstack/react-start": "^1.120.20",
         "@tanstack/router-plugin": "^1.120.20",
         "drizzle-orm": "^0.45.2",
         "nanoid": "^5.1.11",
+        "postgres": "^3.4.9",
         "react": "^19.2.0",
         "react-dom": "^19.2.0",
         "tailwindcss": "^4.1.18",
@@ -488,6 +488,8 @@
     "picomatch": ["picomatch@4.0.4", "https://registry.npmmirror.com/picomatch/-/picomatch-4.0.4.tgz", {}, "sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A=="],
 
     "postcss": ["postcss@8.5.15", "https://registry.npmmirror.com/postcss/-/postcss-8.5.15.tgz", { "dependencies": { "nanoid": "^3.3.12", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-FfR8sjd4em2T6fb3I2MwAJU7HWVMr9zba+enmQeeWFfCbm+UOC/0X4DS8XtpUTMwWMGbjKYP7xjfNekzyGmB3A=="],
+
+    "postgres": ["postgres@3.4.9", "https://registry.npmmirror.com/postgres/-/postgres-3.4.9.tgz", {}, "sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw=="],
 
     "prettier": ["prettier@3.8.4", "https://registry.npmmirror.com/prettier/-/prettier-3.8.4.tgz", { "bin": { "prettier": "bin/prettier.cjs" } }, "sha512-N2MylSdi48+5N/6S5j+maeHbUSIzzZ5uOcX5Hm4QpV8Dkb1HFjfAKTKX6yNPJQD9AhcT3ifHNB66tWTTJDi11Q=="],
 

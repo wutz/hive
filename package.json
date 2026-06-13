@@ -16,13 +16,13 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
-    "@libsql/client": "^0.17.3",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/react-router": "^1.120.20",
     "@tanstack/react-start": "^1.120.20",
     "@tanstack/router-plugin": "^1.120.20",
     "drizzle-orm": "^0.45.2",
     "nanoid": "^5.1.11",
+    "postgres": "^3.4.9",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "tailwindcss": "^4.1.18"

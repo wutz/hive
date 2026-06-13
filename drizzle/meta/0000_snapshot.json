@@ -1,39 +1,37 @@
 {
-  "version": "6",
-  "dialect": "sqlite",
-  "id": "2ec4f2b3-b2eb-47d2-b7dc-9a95b17355da",
+  "id": "b316dbc0-591f-4218-a07d-2e142f1a5686",
   "prevId": "00000000-0000-0000-0000-000000000000",
+  "version": "7",
+  "dialect": "postgresql",
   "tables": {
-    "channel_members": {
+    "public.channel_members": {
       "name": "channel_members",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "varchar(32)",
           "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "channel_id": {
           "name": "channel_id",
-          "type": "text",
+          "type": "varchar(32)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "user_id": {
           "name": "user_id",
-          "type": "text",
+          "type": "varchar(32)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "joined_at": {
           "name": "joined_at",
-          "type": "integer",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -67,159 +65,155 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "channels": {
+    "public.channels": {
       "name": "channels",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "varchar(32)",
           "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "name": {
           "name": "name",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "description": {
           "name": "description",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
+          "default": "now()"
         }
       },
-      "indexes": {
-        "channels_name_unique": {
-          "name": "channels_name_unique",
-          "columns": [
-            "name"
-          ],
-          "isUnique": true
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
+      "uniqueConstraints": {
+        "channels_name_unique": {
+          "name": "channels_name_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "computers": {
+    "public.computers": {
       "name": "computers",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "varchar(32)",
           "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "name": {
           "name": "name",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "api_key": {
           "name": "api_key",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "owner_id": {
           "name": "owner_id",
-          "type": "text",
+          "type": "varchar(32)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "status": {
           "name": "status",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
           "default": "'offline'"
         },
         "last_seen_at": {
           "name": "last_seen_at",
-          "type": "integer",
+          "type": "timestamp",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
+          "default": "now()"
         }
       },
-      "indexes": {
-        "computers_api_key_unique": {
-          "name": "computers_api_key_unique",
-          "columns": [
-            "api_key"
-          ],
-          "isUnique": true
-        }
-      },
+      "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
+      "uniqueConstraints": {
+        "computers_api_key_unique": {
+          "name": "computers_api_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "api_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "messages": {
+    "public.messages": {
       "name": "messages",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "varchar(32)",
           "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "channel_id": {
           "name": "channel_id",
-          "type": "text",
+          "type": "varchar(32)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "user_id": {
           "name": "user_id",
-          "type": "text",
+          "type": "varchar(32)",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "content": {
           "name": "content",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -253,77 +247,65 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     },
-    "users": {
+    "public.users": {
       "name": "users",
+      "schema": "",
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "varchar(32)",
           "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "name": {
           "name": "name",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "display_name": {
           "name": "display_name",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "type": {
           "name": "type",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
+          "notNull": true
         },
         "computer_id": {
           "name": "computer_id",
-          "type": "text",
+          "type": "varchar(32)",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "api_key": {
           "name": "api_key",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "avatar_url": {
           "name": "avatar_url",
           "type": "text",
           "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
-          "type": "integer",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
+          "default": "now()"
         }
       },
-      "indexes": {
-        "users_api_key_unique": {
-          "name": "users_api_key_unique",
-          "columns": [
-            "api_key"
-          ],
-          "isUnique": true
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "users_computer_id_computers_id_fk": {
           "name": "users_computer_id_computers_id_fk",
@@ -340,18 +322,29 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
+      "uniqueConstraints": {
+        "users_api_key_unique": {
+          "name": "users_api_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "api_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
     }
   },
-  "views": {},
   "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
   "_meta": {
+    "columns": {},
     "schemas": {},
-    "tables": {},
-    "columns": {}
-  },
-  "internal": {
-    "indexes": {}
+    "tables": {}
   }
 }

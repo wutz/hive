@@ -1,44 +1,44 @@
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core'
+import { pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core'
 
-export const computers = sqliteTable('computers', {
-  id: text('id').primaryKey(),
+export const computers = pgTable('computers', {
+  id: varchar('id', { length: 32 }).primaryKey(),
   name: text('name').notNull(),
   apiKey: text('api_key').notNull().unique(),
-  ownerId: text('owner_id').notNull(),
+  ownerId: varchar('owner_id', { length: 32 }).notNull(),
   status: text('status', { enum: ['online', 'offline'] }).notNull().default('offline'),
-  lastSeenAt: integer('last_seen_at', { mode: 'timestamp' }),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  lastSeenAt: timestamp('last_seen_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
-export const users = sqliteTable('users', {
-  id: text('id').primaryKey(),
+export const users = pgTable('users', {
+  id: varchar('id', { length: 32 }).primaryKey(),
   name: text('name').notNull(),
   displayName: text('display_name'),
   type: text('type', { enum: ['human', 'agent'] }).notNull(),
-  computerId: text('computer_id').references(() => computers.id),
+  computerId: varchar('computer_id', { length: 32 }).references(() => computers.id),
   apiKey: text('api_key').unique(),
   avatarUrl: text('avatar_url'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
-export const channels = sqliteTable('channels', {
-  id: text('id').primaryKey(),
+export const channels = pgTable('channels', {
+  id: varchar('id', { length: 32 }).primaryKey(),
   name: text('name').notNull().unique(),
   description: text('description'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
-export const channelMembers = sqliteTable('channel_members', {
-  id: text('id').primaryKey(),
-  channelId: text('channel_id').notNull().references(() => channels.id),
-  userId: text('user_id').notNull().references(() => users.id),
-  joinedAt: integer('joined_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+export const channelMembers = pgTable('channel_members', {
+  id: varchar('id', { length: 32 }).primaryKey(),
+  channelId: varchar('channel_id', { length: 32 }).notNull().references(() => channels.id),
+  userId: varchar('user_id', { length: 32 }).notNull().references(() => users.id),
+  joinedAt: timestamp('joined_at').notNull().defaultNow(),
 })
 
-export const messages = sqliteTable('messages', {
-  id: text('id').primaryKey(),
-  channelId: text('channel_id').notNull().references(() => channels.id),
-  userId: text('user_id').notNull().references(() => users.id),
+export const messages = pgTable('messages', {
+  id: varchar('id', { length: 32 }).primaryKey(),
+  channelId: varchar('channel_id', { length: 32 }).notNull().references(() => channels.id),
+  userId: varchar('user_id', { length: 32 }).notNull().references(() => users.id),
   content: text('content').notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull().$defaultFn(() => new Date()),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 })
