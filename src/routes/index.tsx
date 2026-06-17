@@ -326,7 +326,7 @@ function ChatView({ events, currentUser, input, setInput, onSend, onKeyDown, eve
       </div>
 
       {/* Input */}
-      <div className="px-4 md:px-16 pb-4 pt-2">
+      <div className="sticky bottom-0 bg-white dark:bg-gray-950 px-4 md:px-16 pb-4 pt-2">
         <div className="border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden bg-white dark:bg-gray-900">
           <input
             type="text"
