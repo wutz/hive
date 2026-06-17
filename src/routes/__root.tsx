@@ -22,7 +22,7 @@ function RootLayout() {
       <head>
         <HeadContent />
       </head>
-      <body className="bg-gray-900 text-white antialiased">
+      <body className="antialiased">
         <Outlet />
         <Scripts />
       </body>
