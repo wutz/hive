@@ -157,7 +157,7 @@ function HomePage() {
       {/* Main */}
       <main className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="h-11 border-b border-gray-200 dark:border-gray-800 flex items-center px-4 shrink-0 gap-3">
+        <header className="sticky top-0 z-10 h-11 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800 flex items-center px-4 shrink-0 gap-3">
           <button onClick={() => setSidebarOpen(true)} className="md:hidden p-1 text-gray-400 hover:text-gray-900 dark:hover:text-white">
             <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" /></svg>
           </button>
