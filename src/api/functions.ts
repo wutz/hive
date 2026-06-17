@@ -1,56 +1,142 @@
 import { createServerFn } from '@tanstack/react-start'
 import { getDb } from '#/db'
-import { computers, users, channels, channelMembers, messages } from '#/db/schema'
-import { eq, desc } from 'drizzle-orm'
+import { computers, users, projects, tasks, events } from '#/db/schema'
+import { eq, desc, and } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
 
-// Channel operations
-export const listChannels = createServerFn({ method: 'GET' })
+type TaskStatus = 'pending' | 'running' | 'in_review' | 'done'
+type EventType = 'message' | 'terminal' | 'diff' | 'status_change'
+
+export const initializeApp = createServerFn({ method: 'POST' })
   .handler(async () => {
     const db = getDb()
-    return db.select().from(channels)
+
+    const existing = await db.select().from(projects)
+    if (existing.length === 0) {
+      const projectId = nanoid()
+      await db.insert(projects).values({
+        id: projectId, name: 'default', description: 'Default project',
+      })
+    }
+
+    const existingUsers = await db.select().from(users)
+    if (existingUsers.length === 0) {
+      await db.insert(users).values({
+        id: nanoid(), name: 'User', type: 'human',
+      })
+    }
+
+    const allProjects = await db.select().from(projects)
+    const allUsers = await db.select({
+      id: users.id, name: users.name, type: users.type,
+    }).from(users)
+
+    return { projects: allProjects, currentUser: allUsers[0] }
   })
 
-export const createChannel = createServerFn({ method: 'POST' })
+export const listProjects = createServerFn({ method: 'GET' })
+  .handler(async () => {
+    const db = getDb()
+    return db.select().from(projects)
+  })
+
+export const createProject = createServerFn({ method: 'POST' })
   .validator((data: { name: string; description?: string }) => data)
   .handler(async ({ data }) => {
     const db = getDb()
-    return db.insert(channels).values({
+    return db.insert(projects).values({
       id: nanoid(), name: data.name, description: data.description,
     }).returning().then(r => r[0])
   })
 
-// Message operations
-export const getMessages = createServerFn({ method: 'GET' })
-  .validator((data: { channelId: string; limit?: number }) => data)
+export const listTasks = createServerFn({ method: 'GET' })
+  .validator((data: { projectId: string; status?: TaskStatus }) => data)
   .handler(async ({ data }) => {
     const db = getDb()
+    const where = data.status
+      ? and(eq(tasks.projectId, data.projectId), eq(tasks.status, data.status as TaskStatus))
+      : eq(tasks.projectId, data.projectId)
     const result = await db.select({
-      id: messages.id,
-      content: messages.content,
-      createdAt: messages.createdAt,
-      userId: messages.userId,
-      userName: users.name,
-      userType: users.type,
+      id: tasks.id,
+      title: tasks.title,
+      description: tasks.description,
+      status: tasks.status,
+      assigneeId: tasks.assigneeId,
+      createdBy: tasks.createdBy,
+      createdAt: tasks.createdAt,
+      updatedAt: tasks.updatedAt,
     })
-      .from(messages)
-      .innerJoin(users, eq(messages.userId, users.id))
-      .where(eq(messages.channelId, data.channelId))
-      .orderBy(desc(messages.createdAt))
-      .limit(data.limit || 50)
-    return result.reverse()
+      .from(tasks)
+      .where(where)
+      .orderBy(desc(tasks.createdAt))
+    return result
   })
 
-export const sendMessage = createServerFn({ method: 'POST' })
-  .validator((data: { channelId: string; userId: string; content: string }) => data)
+export const createTask = createServerFn({ method: 'POST' })
+  .validator((data: { projectId: string; title: string; description?: string; createdBy: string }) => data)
   .handler(async ({ data }) => {
     const db = getDb()
-    return db.insert(messages).values({
-      id: nanoid(), channelId: data.channelId, userId: data.userId, content: data.content,
+    return db.insert(tasks).values({
+      id: nanoid(), projectId: data.projectId, title: data.title,
+      description: data.description, createdBy: data.createdBy,
     }).returning().then(r => r[0])
   })
 
-// Computer/Agent operations
+export const updateTaskStatus = createServerFn({ method: 'POST' })
+  .validator((data: { taskId: string; status: TaskStatus; userId: string }) => data)
+  .handler(async ({ data }) => {
+    const db = getDb()
+    await db.update(tasks).set({ status: data.status, updatedAt: new Date() }).where(eq(tasks.id, data.taskId))
+    await db.insert(events).values({
+      id: nanoid(), taskId: data.taskId, userId: data.userId,
+      type: 'status_change' as EventType, content: data.status,
+    })
+    return { ok: true }
+  })
+
+export const claimTask = createServerFn({ method: 'POST' })
+  .validator((data: { taskId: string; userId: string }) => data)
+  .handler(async ({ data }) => {
+    const db = getDb()
+    await db.update(tasks).set({ assigneeId: data.userId, status: 'running', updatedAt: new Date() }).where(eq(tasks.id, data.taskId))
+    await db.insert(events).values({
+      id: nanoid(), taskId: data.taskId, userId: data.userId,
+      type: 'status_change' as EventType, content: 'claimed',
+    })
+    return { ok: true }
+  })
+
+export const getTaskEvents = createServerFn({ method: 'GET' })
+  .validator((data: { taskId: string }) => data)
+  .handler(async ({ data }) => {
+    const db = getDb()
+    return db.select({
+      id: events.id,
+      type: events.type,
+      content: events.content,
+      metadata: events.metadata,
+      userId: events.userId,
+      userName: users.name,
+      userType: users.type,
+      createdAt: events.createdAt,
+    })
+      .from(events)
+      .innerJoin(users, eq(events.userId, users.id))
+      .where(eq(events.taskId, data.taskId))
+      .orderBy(events.createdAt)
+  })
+
+export const postEvent = createServerFn({ method: 'POST' })
+  .validator((data: { taskId: string; userId: string; type: EventType; content: string; metadata?: string }) => data)
+  .handler(async ({ data }) => {
+    const db = getDb()
+    const values: typeof events.$inferInsert = {
+      id: nanoid(), taskId: data.taskId, userId: data.userId,
+      type: data.type as EventType, content: data.content, metadata: data.metadata,
+    }
+    return db.insert(events).values(values).returning().then(r => r[0])
+  })
+
 export const registerComputer = createServerFn({ method: 'POST' })
   .validator((data: { name: string; ownerName: string }) => data)
   .handler(async ({ data }) => {
@@ -80,56 +166,13 @@ export const createAgent = createServerFn({ method: 'POST' })
     return { agent: { id: agent.id, name: agent.name }, apiKey: agentApiKey }
   })
 
-export const joinChannel = createServerFn({ method: 'POST' })
-  .validator((data: { channelId: string; userId: string }) => data)
-  .handler(async ({ data }) => {
-    const db = getDb()
-    await db.insert(channelMembers).values({
-      id: nanoid(), channelId: data.channelId, userId: data.userId,
-    })
-    return { ok: true }
-  })
-
-export const getChannelMembers = createServerFn({ method: 'GET' })
-  .validator((data: { channelId: string }) => data)
-  .handler(async ({ data }) => {
-    const db = getDb()
-    return db.select({
-      id: users.id,
-      name: users.name,
-      displayName: users.displayName,
-      type: users.type,
-    })
-      .from(channelMembers)
-      .innerJoin(users, eq(channelMembers.userId, users.id))
-      .where(eq(channelMembers.channelId, data.channelId))
-  })
-
-// Initialize with default channel and demo user
-export const initializeApp = createServerFn({ method: 'POST' })
+export const listComputers = createServerFn({ method: 'GET' })
   .handler(async () => {
     const db = getDb()
-
-    // Create default channel if none exist
-    const existing = await db.select().from(channels)
-    if (existing.length === 0) {
-      await db.insert(channels).values({
-        id: nanoid(), name: 'general', description: 'General discussion',
-      })
-    }
-
-    // Create demo user if none exist
-    const existingUsers = await db.select().from(users)
-    if (existingUsers.length === 0) {
-      await db.insert(users).values({
-        id: nanoid(), name: 'User', type: 'human',
-      })
-    }
-
-    const allChannels = await db.select().from(channels)
-    const allUsers = await db.select({
-      id: users.id, name: users.name, type: users.type,
-    }).from(users)
-
-    return { channels: allChannels, currentUser: allUsers[0] }
+    return db.select({
+      id: computers.id,
+      name: computers.name,
+      status: computers.status,
+      lastSeenAt: computers.lastSeenAt,
+    }).from(computers)
   })

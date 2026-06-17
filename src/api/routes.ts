@@ -1,7 +1,10 @@
 import { getDb } from '#/db'
-import { computers, users, channels, channelMembers, messages } from '#/db/schema'
-import { eq, desc, and, gt } from 'drizzle-orm'
+import { computers, users, projects, tasks, events } from '#/db/schema'
+import { eq, desc, and } from 'drizzle-orm'
 import { nanoid } from 'nanoid'
+
+type TaskStatus = 'pending' | 'running' | 'in_review' | 'done'
+type EventType = 'message' | 'terminal' | 'diff' | 'status_change'
 
 function json(data: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(data), {
@@ -10,9 +13,22 @@ function json(data: unknown, init?: ResponseInit): Response {
   })
 }
 
+function getApiKey(request: Request): string | null {
+  return request.headers.get('authorization')?.replace('Bearer ', '') || null
+}
+
+async function authenticateAgent(request: Request) {
+  const apiKey = getApiKey(request)
+  if (!apiKey) return null
+  const db = getDb()
+  return db.select().from(users)
+    .where(eq(users.apiKey, apiKey)).then(r => r[0] || null)
+}
+
 type RouteHandler = (request: Request) => Promise<Response>
 
 const routes: Record<string, RouteHandler> = {
+  // Computer management
   'POST /api/computers': async (request) => {
     const body = await request.json() as { name?: string; ownerName?: string }
     if (!body.name || !body.ownerName) {
@@ -28,9 +44,10 @@ const routes: Record<string, RouteHandler> = {
     return json({ computer: { id: computer.id, name: computer.name }, apiKey })
   },
 
+  // Agent management
   'POST /api/agents': async (request) => {
     const body = await request.json() as { name?: string; computerId?: string }
-    const apiKey = request.headers.get('authorization')?.replace('Bearer ', '')
+    const apiKey = getApiKey(request)
     if (!body.name || !body.computerId || !apiKey) {
       return json({ error: 'name, computerId, and authorization required' }, { status: 400 })
     }
@@ -47,103 +64,151 @@ const routes: Record<string, RouteHandler> = {
     return json({ agent: { id: agent.id, name: agent.name }, apiKey: agentApiKey })
   },
 
-  'GET /api/channels': async () => {
+  // Project operations
+  'GET /api/projects': async () => {
     const db = getDb()
-    const result = await db.select().from(channels)
+    const result = await db.select().from(projects)
     return json(result)
   },
 
-  'POST /api/channels': async (request) => {
+  'POST /api/projects': async (request) => {
     const body = await request.json() as { name?: string; description?: string }
     if (!body.name) {
       return json({ error: 'name required' }, { status: 400 })
     }
     const db = getDb()
-    const channel = await db.insert(channels).values({
+    const project = await db.insert(projects).values({
       id: nanoid(), name: body.name, description: body.description,
     }).returning().then(r => r[0])
-    return json(channel)
+    return json(project)
   },
 
-  'POST /api/channels/join': async (request) => {
-    const body = await request.json() as { channelId?: string; userId?: string }
-    if (!body.channelId || !body.userId) {
-      return json({ error: 'channelId and userId required' }, { status: 400 })
+  // Task operations
+  'GET /api/tasks': async (request) => {
+    const url = new URL(request.url)
+    const projectId = url.searchParams.get('projectId')
+    const status = url.searchParams.get('status') as TaskStatus | null
+    if (!projectId) {
+      return json({ error: 'projectId required' }, { status: 400 })
     }
     const db = getDb()
-    await db.insert(channelMembers).values({
-      id: nanoid(), channelId: body.channelId, userId: body.userId,
+    const where = status
+      ? and(eq(tasks.projectId, projectId), eq(tasks.status, status))
+      : eq(tasks.projectId, projectId)
+    const result = await db.select({
+      id: tasks.id,
+      title: tasks.title,
+      description: tasks.description,
+      status: tasks.status,
+      assigneeId: tasks.assigneeId,
+      createdBy: tasks.createdBy,
+      createdAt: tasks.createdAt,
+      updatedAt: tasks.updatedAt,
+    })
+      .from(tasks)
+      .where(where)
+      .orderBy(desc(tasks.createdAt))
+    return json(result)
+  },
+
+  'POST /api/tasks': async (request) => {
+    const user = await authenticateAgent(request)
+    const body = await request.json() as { projectId?: string; title?: string; description?: string; createdBy?: string }
+    const createdBy = user?.id || body.createdBy
+    if (!body.projectId || !body.title || !createdBy) {
+      return json({ error: 'projectId, title, and createdBy/auth required' }, { status: 400 })
+    }
+    const db = getDb()
+    const task = await db.insert(tasks).values({
+      id: nanoid(), projectId: body.projectId, title: body.title,
+      description: body.description, createdBy,
+    }).returning().then(r => r[0])
+    return json(task)
+  },
+
+  'POST /api/tasks/claim': async (request) => {
+    const user = await authenticateAgent(request)
+    const body = await request.json() as { taskId?: string; userId?: string }
+    const userId = user?.id || body.userId
+    if (!body.taskId || !userId) {
+      return json({ error: 'taskId and userId/auth required' }, { status: 400 })
+    }
+    const db = getDb()
+    await db.update(tasks).set({
+      assigneeId: userId, status: 'running' as TaskStatus, updatedAt: new Date(),
+    }).where(eq(tasks.id, body.taskId))
+    await db.insert(events).values({
+      id: nanoid(), taskId: body.taskId, userId,
+      type: 'status_change' as EventType, content: 'claimed',
     })
     return json({ ok: true })
   },
 
-  'POST /api/messages': async (request) => {
-    const apiKey = request.headers.get('authorization')?.replace('Bearer ', '')
-    const body = await request.json() as { channelId?: string; content?: string; userId?: string }
+  'POST /api/tasks/status': async (request) => {
+    const user = await authenticateAgent(request)
+    const body = await request.json() as { taskId?: string; status?: TaskStatus; userId?: string }
+    const userId = user?.id || body.userId
+    if (!body.taskId || !body.status || !userId) {
+      return json({ error: 'taskId, status, and userId/auth required' }, { status: 400 })
+    }
     const db = getDb()
-
-    let userId = body.userId
-    if (apiKey && !userId) {
-      const user = await db.select().from(users)
-        .where(eq(users.apiKey, apiKey)).then(r => r[0])
-      if (!user) return json({ error: 'Invalid credentials' }, { status: 401 })
-      userId = user.id
-    }
-    if (!body.channelId || !body.content || !userId) {
-      return json({ error: 'channelId, content, and userId/auth required' }, { status: 400 })
-    }
-    const message = await db.insert(messages).values({
-      id: nanoid(), channelId: body.channelId, userId, content: body.content,
-    }).returning().then(r => r[0])
-    return json(message)
+    await db.update(tasks).set({ status: body.status, updatedAt: new Date() }).where(eq(tasks.id, body.taskId))
+    await db.insert(events).values({
+      id: nanoid(), taskId: body.taskId, userId,
+      type: 'status_change' as EventType, content: body.status,
+    })
+    return json({ ok: true })
   },
 
-  'GET /api/messages': async (request) => {
+  // Event operations
+  'GET /api/events': async (request) => {
     const url = new URL(request.url)
-    const channelId = url.searchParams.get('channelId')
-    const after = url.searchParams.get('after')
-    const limit = Number(url.searchParams.get('limit') || '50')
-    if (!channelId) {
-      return json({ error: 'channelId required' }, { status: 400 })
+    const taskId = url.searchParams.get('taskId')
+    if (!taskId) {
+      return json({ error: 'taskId required' }, { status: 400 })
     }
     const db = getDb()
     const result = await db.select({
-      id: messages.id,
-      content: messages.content,
-      createdAt: messages.createdAt,
-      userId: messages.userId,
+      id: events.id,
+      type: events.type,
+      content: events.content,
+      metadata: events.metadata,
+      userId: events.userId,
       userName: users.name,
       userType: users.type,
-      userDisplayName: users.displayName,
+      createdAt: events.createdAt,
     })
-      .from(messages)
-      .innerJoin(users, eq(messages.userId, users.id))
-      .where(
-        after
-          ? and(eq(messages.channelId, channelId), gt(messages.id, after))
-          : eq(messages.channelId, channelId)
-      )
-      .orderBy(desc(messages.createdAt))
-      .limit(limit)
-    return json(result.reverse())
+      .from(events)
+      .innerJoin(users, eq(events.userId, users.id))
+      .where(eq(events.taskId, taskId))
+      .orderBy(events.createdAt)
+    return json(result)
   },
 
-  'GET /api/channels/members': async (request) => {
-    const url = new URL(request.url)
-    const channelId = url.searchParams.get('channelId')
-    if (!channelId) {
-      return json({ error: 'channelId required' }, { status: 400 })
+  'POST /api/events': async (request) => {
+    const user = await authenticateAgent(request)
+    const body = await request.json() as { taskId?: string; type?: EventType; content?: string; metadata?: string; userId?: string }
+    const userId = user?.id || body.userId
+    if (!body.taskId || !body.type || !body.content || !userId) {
+      return json({ error: 'taskId, type, content, and userId/auth required' }, { status: 400 })
     }
     const db = getDb()
+    const event = await db.insert(events).values({
+      id: nanoid(), taskId: body.taskId, userId,
+      type: body.type as EventType, content: body.content, metadata: body.metadata,
+    }).returning().then(r => r[0])
+    return json(event)
+  },
+
+  // Computer listing
+  'GET /api/computers': async () => {
+    const db = getDb()
     const result = await db.select({
-      id: users.id,
-      name: users.name,
-      displayName: users.displayName,
-      type: users.type,
-    })
-      .from(channelMembers)
-      .innerJoin(users, eq(channelMembers.userId, users.id))
-      .where(eq(channelMembers.channelId, channelId))
+      id: computers.id,
+      name: computers.name,
+      status: computers.status,
+      lastSeenAt: computers.lastSeenAt,
+    }).from(computers)
     return json(result)
   },
 }
