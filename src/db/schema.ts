@@ -21,6 +21,44 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 })
 
+export const projects = pgTable('projects', {
+  id: varchar('id', { length: 32 }).primaryKey(),
+  name: text('name').notNull().unique(),
+  description: text('description'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const tasks = pgTable('tasks', {
+  id: varchar('id', { length: 32 }).primaryKey(),
+  projectId: varchar('project_id', { length: 32 }).notNull().references(() => projects.id),
+  title: text('title').notNull(),
+  description: text('description'),
+  status: text('status', { enum: ['pending', 'running', 'in_review', 'done'] }).notNull().default('pending'),
+  assigneeId: varchar('assignee_id', { length: 32 }).references(() => users.id),
+  createdBy: varchar('created_by', { length: 32 }).notNull().references(() => users.id),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+})
+
+export const events = pgTable('events', {
+  id: varchar('id', { length: 32 }).primaryKey(),
+  taskId: varchar('task_id', { length: 32 }).notNull().references(() => tasks.id),
+  userId: varchar('user_id', { length: 32 }).notNull().references(() => users.id),
+  type: text('type', { enum: ['message', 'terminal', 'diff', 'status_change'] }).notNull(),
+  content: text('content').notNull(),
+  metadata: text('metadata'), // JSON string for additional data
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+})
+
+export const projectMembers = pgTable('project_members', {
+  id: varchar('id', { length: 32 }).primaryKey(),
+  projectId: varchar('project_id', { length: 32 }).notNull().references(() => projects.id),
+  userId: varchar('user_id', { length: 32 }).notNull().references(() => users.id),
+  role: text('role', { enum: ['owner', 'member'] }).notNull().default('member'),
+  joinedAt: timestamp('joined_at').notNull().defaultNow(),
+})
+
+// Legacy tables - will be removed after migration
 export const channels = pgTable('channels', {
   id: varchar('id', { length: 32 }).primaryKey(),
   name: text('name').notNull().unique(),

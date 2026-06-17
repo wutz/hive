@@ -3,5 +3,6 @@ dist
 .output
 .wrangler
 .dev.vars
+.env
 app.config.timestamp_*
 local.db
