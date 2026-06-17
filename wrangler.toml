@@ -5,6 +5,3 @@ main = "@tanstack/react-start/server-entry"
 
 [observability]
 enabled = true
-
-[vars]
-DATABASE_URL = ""
