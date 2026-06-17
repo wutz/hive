@@ -54,7 +54,7 @@ function HomePage() {
       } catch {}
     }
     load()
-    pollRef.current = setInterval(load, 3000)
+    pollRef.current = setInterval(load, 5000)
     return () => clearInterval(pollRef.current)
   }, [activeProjectId])
 
@@ -67,7 +67,7 @@ function HomePage() {
       } catch {}
     }
     load()
-    const interval = setInterval(load, 2000)
+    const interval = setInterval(load, 3000)
     return () => clearInterval(interval)
   }, [activeChatId])
 
@@ -89,6 +89,19 @@ function HomePage() {
     if (!input.trim() || !activeChatId || !currentUser) return
     const content = input.trim()
     setInput('')
+    // Optimistic update — show message immediately
+    const optimisticEvent: ChatEvent = {
+      id: `tmp-${Date.now()}`,
+      type: 'message',
+      content,
+      metadata: null,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userType: currentUser.type,
+      createdAt: new Date(),
+    }
+    setChatEvents(prev => [...prev, optimisticEvent])
+    // Then persist
     await postEvent({ data: { taskId: activeChatId, userId: currentUser.id, type: 'message', content } })
     const result = await getTaskEvents({ data: { taskId: activeChatId } })
     setChatEvents(result as ChatEvent[])
