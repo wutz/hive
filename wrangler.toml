@@ -5,3 +5,7 @@ main = "./src/server.ts"
 
 [observability]
 enabled = true
+
+[vars]
+SUPABASE_URL = "https://icbmhwuzmazxwsrcough.supabase.co"
+SUPABASE_ANON_KEY = "sb_publishable_Cp0lPDleO8haCvdYLm-0zA_3GHp3pZA"

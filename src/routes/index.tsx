@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { initializeApp, listTasks, createTask, getTaskEvents, postEvent } from '#/api/functions'
+import { supabase } from '#/lib/supabase'
 
 export const Route = createFileRoute('/')({
   component: HomePage,
@@ -35,7 +36,6 @@ function HomePage() {
   const [chatEvents, setChatEvents] = useState<ChatEvent[]>([])
   const [input, setInput] = useState('')
   const eventsEndRef = useRef<HTMLDivElement>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval>>(undefined)
 
   const activeProject = projects.find((p: Project) => p.id === activeProjectId)
   const activeChat = chatList.find(c => c.id === activeChatId)
@@ -54,8 +54,14 @@ function HomePage() {
       } catch {}
     }
     load()
-    pollRef.current = setInterval(load, 5000)
-    return () => clearInterval(pollRef.current)
+    // Realtime subscription for task/chat changes
+    const channel = supabase
+      .channel('tasks-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `project_id=eq.${activeProjectId}` }, () => {
+        load()
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
   }, [activeProjectId])
 
   useEffect(() => {
@@ -67,8 +73,14 @@ function HomePage() {
       } catch {}
     }
     load()
-    const interval = setInterval(load, 3000)
-    return () => clearInterval(interval)
+    // Realtime subscription for event changes
+    const channel = supabase
+      .channel(`events-${activeChatId}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'events', filter: `task_id=eq.${activeChatId}` }, () => {
+        load()
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
   }, [activeChatId])
 
   useEffect(() => {
