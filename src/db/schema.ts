@@ -30,7 +30,7 @@ export const projects = pgTable('projects', {
 
 export const tasks = pgTable('tasks', {
   id: varchar('id', { length: 32 }).primaryKey(),
-  projectId: varchar('project_id', { length: 32 }).notNull().references(() => projects.id),
+  projectId: varchar('project_id', { length: 32 }).references(() => projects.id),
   title: text('title').notNull(),
   description: text('description'),
   status: text('status', { enum: ['pending', 'running', 'in_review', 'done'] }).notNull().default('pending'),

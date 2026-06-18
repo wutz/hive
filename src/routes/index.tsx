@@ -10,19 +10,17 @@ export const Route = createFileRoute('/')({
       const init = await initializeApp({})
       return init
     } catch {
-      return { projects: [], currentUser: null }
+      return { currentUser: null }
     }
   },
 })
 
-interface Project { id: string; name: string; description: string | null }
 interface Chat { id: string; title: string; description: string | null; status: string; assigneeId: string | null; createdBy: string; createdAt: Date | null; updatedAt: Date | null }
 interface ChatEvent { id: string; type: string; content: string; metadata: string | null; userId: string; userName: string; userType: string; createdAt: Date | null }
 type Theme = 'light' | 'dark'
 
 function HomePage() {
   const loaderData = Route.useLoaderData()
-  const projects = loaderData?.projects ?? []
   const currentUser = loaderData?.currentUser ?? null
 
   const [theme, setTheme] = useState<Theme>(() => {
@@ -30,14 +28,12 @@ function HomePage() {
     return 'light'
   })
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [activeProjectId, setActiveProjectId] = useState<string>(projects[0]?.id || '')
   const [chatList, setChatList] = useState<Chat[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [chatEvents, setChatEvents] = useState<ChatEvent[]>([])
   const [input, setInput] = useState('')
   const eventsEndRef = useRef<HTMLDivElement>(null)
 
-  const activeProject = projects.find((p: Project) => p.id === activeProjectId)
   const activeChat = chatList.find(c => c.id === activeChatId)
 
   useEffect(() => {
@@ -46,10 +42,9 @@ function HomePage() {
   }, [theme])
 
   useEffect(() => {
-    if (!activeProjectId) return
     const load = async () => {
       try {
-        const result = await listTasks({ data: { projectId: activeProjectId } })
+        const result = await listTasks({ data: {} })
         setChatList(result as Chat[])
       } catch {}
     }
@@ -57,12 +52,12 @@ function HomePage() {
     // Realtime subscription for task/chat changes
     const channel = supabase
       .channel('tasks-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `project_id=eq.${activeProjectId}` }, () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
         load()
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [activeProjectId])
+  }, [])
 
   useEffect(() => {
     if (!activeChatId) return
@@ -88,13 +83,13 @@ function HomePage() {
   }, [chatEvents.length])
 
   const handleNewChat = async (title: string) => {
-    if (!title.trim() || !activeProjectId || !currentUser) return
+    if (!title.trim() || !currentUser) return
     try {
-      const chat = await createTask({ data: { projectId: activeProjectId, title: title.trim(), createdBy: currentUser.id } })
+      const chat = await createTask({ data: { title: title.trim(), createdBy: currentUser.id } })
       if (chat) {
         setActiveChatId((chat as Chat).id)
         try {
-          const result = await listTasks({ data: { projectId: activeProjectId } })
+          const result = await listTasks({ data: {} })
           setChatList(result as Chat[])
         } catch {}
       }
@@ -145,23 +140,8 @@ function HomePage() {
           <SidebarItem icon={<IconSearch />} label="Search" />
         </div>
 
-        {/* Projects */}
-        <div className="px-3 mt-1">
-          <div className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5 px-1">Projects</div>
-          {projects.map((p: Project) => (
-            <div
-              key={p.id}
-              onClick={() => { setActiveProjectId(p.id); setActiveChatId(null); setSidebarOpen(false) }}
-              className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[13px] cursor-pointer mb-0.5 ${p.id === activeProjectId ? 'bg-gray-200/60 dark:bg-gray-800 font-medium' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/50'}`}
-            >
-              <IconFolder />
-              <span className="truncate">{p.name}</span>
-            </div>
-          ))}
-        </div>
-
         {/* Chats */}
-        <div className="flex-1 overflow-y-auto px-3 mt-3">
+        <div className="flex-1 overflow-y-auto px-3 mt-1">
           <div className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5 px-1">Chats</div>
           {chatList.map(c => (
             <div
@@ -210,7 +190,6 @@ function HomePage() {
           />
         ) : (
           <HomeView
-            project={activeProject}
             onNewChat={handleNewChat}
           />
         )}
@@ -232,7 +211,7 @@ function SidebarItem({ icon, label, onClick }: { icon: React.ReactNode; label: s
 
 /* ── Home View (Codex-style centered input) ── */
 
-function HomeView({ project, onNewChat }: { project?: Project; onNewChat: (title: string) => void }) {
+function HomeView({ onNewChat }: { onNewChat: (title: string) => void }) {
   const [value, setValue] = useState('')
 
   const handleSubmit = () => {
@@ -266,11 +245,6 @@ function HomeView({ project, onNewChat }: { project?: Project; onNewChat: (title
             </button>
           </div>
         </div>
-        {project && (
-          <div className="mt-3 text-center text-xs text-gray-400">
-            Working in <span className="font-medium text-gray-500 dark:text-gray-400">{project.name}</span>
-          </div>
-        )}
       </div>
     </div>
   )
@@ -391,9 +365,6 @@ function IconEdit() {
 }
 function IconSearch() {
   return <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
-}
-function IconFolder() {
-  return <svg className="w-4 h-4 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" /></svg>
 }
 function IconSettings() {
   return <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>

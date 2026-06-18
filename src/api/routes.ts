@@ -69,37 +69,12 @@ const routes: Record<string, RouteHandler> = {
     return json({ agent: { id: agent!.id, name: agent!.name }, apiKey: agentApiKey })
   },
 
-  // Project operations
-  'GET /api/projects': async () => {
-    const sb = getSupabase()
-    const { data, error } = await sb.from('projects').select('*')
-    if (error) return json({ error: error.message }, { status: 500 })
-    return json(data)
-  },
-
-  'POST /api/projects': async (request) => {
-    const body = await request.json() as { name?: string; description?: string }
-    if (!body.name) {
-      return json({ error: 'name required' }, { status: 400 })
-    }
-    const sb = getSupabase()
-    const { data, error } = await sb.from('projects').insert({
-      id: nanoid(), name: body.name, description: body.description,
-    }).select().single()
-    if (error) return json({ error: error.message }, { status: 500 })
-    return json(data)
-  },
-
-  // Task/Chat operations
+  // Chat/Task operations (no project dependency)
   'GET /api/tasks': async (request) => {
     const url = new URL(request.url)
-    const projectId = url.searchParams.get('projectId')
     const status = url.searchParams.get('status') as TaskStatus | null
-    if (!projectId) {
-      return json({ error: 'projectId required' }, { status: 400 })
-    }
     const sb = getSupabase()
-    let query = sb.from('tasks').select('*').eq('project_id', projectId).order('created_at', { ascending: false })
+    let query = sb.from('tasks').select('*').order('created_at', { ascending: false })
     if (status) query = query.eq('status', status)
     const { data, error } = await query
     if (error) return json({ error: error.message }, { status: 500 })
@@ -108,15 +83,16 @@ const routes: Record<string, RouteHandler> = {
 
   'POST /api/tasks': async (request) => {
     const user = await authenticateAgent(request)
-    const body = await request.json() as { projectId?: string; title?: string; description?: string; createdBy?: string }
+    const body = await request.json() as { title?: string; description?: string; createdBy?: string; projectId?: string }
     const createdBy = user?.id || body.createdBy
-    if (!body.projectId || !body.title || !createdBy) {
-      return json({ error: 'projectId, title, and createdBy/auth required' }, { status: 400 })
+    if (!body.title || !createdBy) {
+      return json({ error: 'title and createdBy/auth required' }, { status: 400 })
     }
     const sb = getSupabase()
     const { data, error } = await sb.from('tasks').insert({
-      id: nanoid(), project_id: body.projectId, title: body.title,
+      id: nanoid(), title: body.title,
       description: body.description, created_by: createdBy,
+      project_id: body.projectId || null,
     }).select().single()
     if (error) return json({ error: error.message }, { status: 500 })
     return json(data)
@@ -167,7 +143,6 @@ const routes: Record<string, RouteHandler> = {
       .eq('task_id', taskId)
       .order('created_at', { ascending: true })
     if (error) return json({ error: error.message }, { status: 500 })
-    // Flatten user info
     const result = (data || []).map((ev: any) => ({
       id: ev.id,
       type: ev.type,
@@ -217,7 +192,6 @@ export function handleApiRequest(request: Request): Promise<Response> | null {
   const handler = routes[key]
   if (handler) {
     return handler(request).then(res => {
-      // Add CORS headers
       for (const [k, v] of Object.entries(corsHeaders())) {
         res.headers.set(k, v)
       }
