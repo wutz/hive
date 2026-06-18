@@ -77,11 +77,17 @@ function HomePage() {
 
   const handleNewChat = async (title: string) => {
     if (!title.trim() || !activeProjectId || !currentUser) return
-    const chat = await createTask({ data: { projectId: activeProjectId, title: title.trim(), createdBy: currentUser.id } })
-    if (chat) {
-      const result = await listTasks({ data: { projectId: activeProjectId } })
-      setChatList(result as Chat[])
-      setActiveChatId((chat as Chat).id)
+    try {
+      const chat = await createTask({ data: { projectId: activeProjectId, title: title.trim(), createdBy: currentUser.id } })
+      if (chat) {
+        setActiveChatId((chat as Chat).id)
+        try {
+          const result = await listTasks({ data: { projectId: activeProjectId } })
+          setChatList(result as Chat[])
+        } catch {}
+      }
+    } catch (e) {
+      console.error('Failed to create chat:', e)
     }
   }
 

@@ -2,20 +2,25 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import * as schema from './schema'
 
-let db: ReturnType<typeof createDb> | null = null
+// Singleton client — reused across requests in the same Worker isolate
+let client: ReturnType<typeof postgres> | null = null
 
-function createDb() {
-  const client = postgres(process.env.DATABASE_URL!, {
-    prepare: false,
-  })
-  return drizzle(client, { schema })
+function getClient() {
+  if (!client) {
+    client = postgres(process.env.DATABASE_URL!, {
+      prepare: false,
+      connect_timeout: 30,
+      idle_timeout: 30,
+      max_lifetime: 60 * 5,
+      max: 10,
+      onnotice: () => {},
+    })
+  }
+  return client
 }
 
 export function getDb() {
-  if (!db) {
-    db = createDb()
-  }
-  return db
+  return drizzle(getClient(), { schema })
 }
 
 export type Database = ReturnType<typeof getDb>
