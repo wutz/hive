@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 const HIVE_URL = process.env.HIVE_URL || 'https://hive.wutz.workers.dev'
 const HIVE_API_KEY = process.env.HIVE_API_KEY || ''
+const HIVE_AGENT_ID = process.env.HIVE_AGENT_ID || ''
 
 async function hiveApi(method: string, path: string, body?: unknown) {
   const url = `${HIVE_URL}${path}`
@@ -30,104 +31,129 @@ async function hiveApi(method: string, path: string, body?: unknown) {
 
 const server = new McpServer({
   name: 'hive',
-  version: '0.1.0',
+  version: '0.2.0',
 })
 
-// List projects
+// List all chats
 server.tool(
-  'hive_list_projects',
-  'List all projects in Hive',
-  {},
-  async () => {
-    const projects = await hiveApi('GET', '/api/projects')
-    return { content: [{ type: 'text', text: JSON.stringify(projects, null, 2) }] }
-  }
-)
-
-// List tasks for a project
-server.tool(
-  'hive_list_tasks',
-  'List tasks in a Hive project, optionally filtered by status',
+  'hive_list_chats',
+  'List all chats in Hive, optionally filtered by status',
   {
-    projectId: z.string().describe('Project ID'),
     status: z.enum(['pending', 'running', 'in_review', 'done']).optional().describe('Filter by status'),
   },
-  async ({ projectId, status }) => {
-    const params = new URLSearchParams({ projectId })
+  async ({ status }) => {
+    const params = new URLSearchParams()
     if (status) params.set('status', status)
-    const tasks = await hiveApi('GET', `/api/tasks?${params}`)
-    return { content: [{ type: 'text', text: JSON.stringify(tasks, null, 2) }] }
+    const query = params.toString() ? `?${params}` : ''
+    const chats = await hiveApi('GET', `/api/tasks${query}`)
+    return { content: [{ type: 'text', text: JSON.stringify(chats, null, 2) }] }
   }
 )
 
-// Create a task
+// Get chat events (the conversation history)
 server.tool(
-  'hive_create_task',
-  'Create a new task in a Hive project',
+  'hive_get_chat_events',
+  'Get the full conversation history for a chat (messages, terminal output, diffs, status changes)',
   {
-    projectId: z.string().describe('Project ID'),
-    title: z.string().describe('Task title'),
-    description: z.string().optional().describe('Task description'),
+    chatId: z.string().describe('Chat ID'),
   },
-  async ({ projectId, title, description }) => {
-    const task = await hiveApi('POST', '/api/tasks', { projectId, title, description })
-    return { content: [{ type: 'text', text: JSON.stringify(task, null, 2) }] }
-  }
-)
-
-// Claim a task
-server.tool(
-  'hive_claim_task',
-  'Claim a task — sets status to running and assigns to you',
-  {
-    taskId: z.string().describe('Task ID to claim'),
-  },
-  async ({ taskId }) => {
-    const result = await hiveApi('POST', '/api/tasks/claim', { taskId })
-    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
-  }
-)
-
-// Update task status
-server.tool(
-  'hive_update_task_status',
-  'Update a task status (pending, running, in_review, done)',
-  {
-    taskId: z.string().describe('Task ID'),
-    status: z.enum(['pending', 'running', 'in_review', 'done']).describe('New status'),
-  },
-  async ({ taskId, status }) => {
-    const result = await hiveApi('POST', '/api/tasks/status', { taskId, status })
-    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] }
-  }
-)
-
-// Get task events
-server.tool(
-  'hive_get_task_events',
-  'Get the event timeline for a task (messages, terminal output, diffs, status changes)',
-  {
-    taskId: z.string().describe('Task ID'),
-  },
-  async ({ taskId }) => {
-    const events = await hiveApi('GET', `/api/events?taskId=${taskId}`)
+  async ({ chatId }) => {
+    const events = await hiveApi('GET', `/api/events?taskId=${chatId}`)
     return { content: [{ type: 'text', text: JSON.stringify(events, null, 2) }] }
   }
 )
 
-// Post an event to a task
+// Respond to a chat (post a message as the agent)
 server.tool(
-  'hive_post_event',
-  'Post an event to a task timeline (message, terminal output, code diff, or status change)',
+  'hive_respond',
+  'Post a response message to a chat as the agent. Use this to reply to user questions.',
   {
-    taskId: z.string().describe('Task ID'),
-    type: z.enum(['message', 'terminal', 'diff', 'status_change']).describe('Event type'),
-    content: z.string().describe('Event content'),
-    metadata: z.string().optional().describe('Optional JSON metadata'),
+    chatId: z.string().describe('Chat ID to respond to'),
+    content: z.string().describe('The response message content'),
   },
-  async ({ taskId, type, content, metadata }) => {
-    const event = await hiveApi('POST', '/api/events', { taskId, type, content, metadata })
-    return { content: [{ type: 'text', text: JSON.stringify(event, null, 2) }] }
+  async ({ chatId, content }) => {
+    const event = await hiveApi('POST', '/api/events', {
+      taskId: chatId,
+      type: 'message',
+      content,
+    })
+    return { content: [{ type: 'text', text: `Message posted to chat ${chatId}` }] }
+  }
+)
+
+// Post terminal output to a chat
+server.tool(
+  'hive_post_terminal',
+  'Post terminal command output to a chat',
+  {
+    chatId: z.string().describe('Chat ID'),
+    content: z.string().describe('Terminal output content'),
+  },
+  async ({ chatId, content }) => {
+    const event = await hiveApi('POST', '/api/events', {
+      taskId: chatId,
+      type: 'terminal',
+      content,
+    })
+    return { content: [{ type: 'text', text: `Terminal output posted to chat ${chatId}` }] }
+  }
+)
+
+// Post code diff to a chat
+server.tool(
+  'hive_post_diff',
+  'Post code changes/diff to a chat',
+  {
+    chatId: z.string().describe('Chat ID'),
+    content: z.string().describe('Diff content (unified diff format)'),
+  },
+  async ({ chatId, content }) => {
+    const event = await hiveApi('POST', '/api/events', {
+      taskId: chatId,
+      type: 'diff',
+      content,
+    })
+    return { content: [{ type: 'text', text: `Code diff posted to chat ${chatId}` }] }
+  }
+)
+
+// Create a new chat
+server.tool(
+  'hive_create_chat',
+  'Create a new chat in Hive',
+  {
+    title: z.string().describe('Chat title'),
+    description: z.string().optional().describe('Chat description'),
+  },
+  async ({ title, description }) => {
+    const chat = await hiveApi('POST', '/api/tasks', { title, description })
+    return { content: [{ type: 'text', text: JSON.stringify(chat, null, 2) }] }
+  }
+)
+
+// Claim a chat (set to running, assign to agent)
+server.tool(
+  'hive_claim_chat',
+  'Claim a chat — sets status to running and assigns it to you',
+  {
+    chatId: z.string().describe('Chat ID to claim'),
+  },
+  async ({ chatId }) => {
+    const result = await hiveApi('POST', '/api/tasks/claim', { taskId: chatId })
+    return { content: [{ type: 'text', text: `Chat ${chatId} claimed` }] }
+  }
+)
+
+// Complete a chat (set to done)
+server.tool(
+  'hive_complete_chat',
+  'Mark a chat as done',
+  {
+    chatId: z.string().describe('Chat ID'),
+  },
+  async ({ chatId }) => {
+    const result = await hiveApi('POST', '/api/tasks/status', { taskId: chatId, status: 'done' })
+    return { content: [{ type: 'text', text: `Chat ${chatId} marked as done` }] }
   }
 )
 
