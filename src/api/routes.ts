@@ -179,6 +179,17 @@ const routes: Record<string, RouteHandler> = {
     if (error) return json({ error: error.message }, { status: 500 })
     return json(data)
   },
+
+  // Agent listing
+  'GET /api/agents': async () => {
+    const sb = getSupabase()
+    const { data, error } = await sb.from('users')
+      .select('id, name, display_name, type, computer_id, avatar_url, created_at')
+      .eq('type', 'agent')
+      .order('created_at', { ascending: false })
+    if (error) return json({ error: error.message }, { status: 500 })
+    return json(data)
+  },
 }
 
 export function handleApiRequest(request: Request): Promise<Response> | null {

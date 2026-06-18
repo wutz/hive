@@ -129,3 +129,13 @@ export const listComputers = createServerFn({ method: 'GET' })
     const { data } = await sb.from('computers').select('id, name, status, last_seen_at')
     return data || []
   })
+
+export const listAgents = createServerFn({ method: 'GET' })
+  .handler(async () => {
+    const sb = getSupabase()
+    const { data } = await sb.from('users')
+      .select('id, name, display_name, type, computer_id, avatar_url, created_at')
+      .eq('type', 'agent')
+      .order('created_at', { ascending: false })
+    return data || []
+  })
