@@ -1,6 +1,4 @@
-import { getDb } from '#/db'
-import { computers, users, projects, tasks, events } from '#/db/schema'
-import { eq, desc, and } from 'drizzle-orm'
+import { getSupabase } from '#/db'
 import { nanoid } from 'nanoid'
 
 type TaskStatus = 'pending' | 'running' | 'in_review' | 'done'
@@ -20,9 +18,17 @@ function getApiKey(request: Request): string | null {
 async function authenticateAgent(request: Request) {
   const apiKey = getApiKey(request)
   if (!apiKey) return null
-  const db = getDb()
-  return db.select().from(users)
-    .where(eq(users.apiKey, apiKey)).then(r => r[0] || null)
+  const sb = getSupabase()
+  const { data } = await sb.from('users').select('*').eq('api_key', apiKey).single()
+  return data || null
+}
+
+function corsHeaders(): Record<string, string> {
+  return {
+    'access-control-allow-origin': '*',
+    'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'access-control-allow-headers': 'content-type, authorization',
+  }
 }
 
 type RouteHandler = (request: Request) => Promise<Response>
@@ -34,14 +40,14 @@ const routes: Record<string, RouteHandler> = {
     if (!body.name || !body.ownerName) {
       return json({ error: 'name and ownerName required' }, { status: 400 })
     }
-    const db = getDb()
+    const sb = getSupabase()
     const apiKey = `hive_comp_${nanoid(32)}`
     const ownerId = nanoid()
-    await db.insert(users).values({ id: ownerId, name: body.ownerName, type: 'human' })
-    const computer = await db.insert(computers).values({
-      id: nanoid(), name: body.name, apiKey, ownerId,
-    }).returning().then(r => r[0])
-    return json({ computer: { id: computer.id, name: computer.name }, apiKey })
+    await sb.from('users').insert({ id: ownerId, name: body.ownerName, type: 'human' })
+    const { data: computer } = await sb.from('computers').insert({
+      id: nanoid(), name: body.name, api_key: apiKey, owner_id: ownerId,
+    }).select().single()
+    return json({ computer: { id: computer!.id, name: computer!.name }, apiKey })
   },
 
   // Agent management
@@ -51,24 +57,24 @@ const routes: Record<string, RouteHandler> = {
     if (!body.name || !body.computerId || !apiKey) {
       return json({ error: 'name, computerId, and authorization required' }, { status: 400 })
     }
-    const db = getDb()
-    const computer = await db.select().from(computers)
-      .where(eq(computers.apiKey, apiKey)).then(r => r[0])
+    const sb = getSupabase()
+    const { data: computer } = await sb.from('computers').select('*').eq('api_key', apiKey).single()
     if (!computer || computer.id !== body.computerId) {
       return json({ error: 'Invalid credentials' }, { status: 401 })
     }
     const agentApiKey = `hive_agent_${nanoid(32)}`
-    const agent = await db.insert(users).values({
-      id: nanoid(), name: body.name, type: 'agent', computerId: body.computerId, apiKey: agentApiKey,
-    }).returning().then(r => r[0])
-    return json({ agent: { id: agent.id, name: agent.name }, apiKey: agentApiKey })
+    const { data: agent } = await sb.from('users').insert({
+      id: nanoid(), name: body.name, type: 'agent', computer_id: body.computerId, api_key: agentApiKey,
+    }).select().single()
+    return json({ agent: { id: agent!.id, name: agent!.name }, apiKey: agentApiKey })
   },
 
   // Project operations
   'GET /api/projects': async () => {
-    const db = getDb()
-    const result = await db.select().from(projects)
-    return json(result)
+    const sb = getSupabase()
+    const { data, error } = await sb.from('projects').select('*')
+    if (error) return json({ error: error.message }, { status: 500 })
+    return json(data)
   },
 
   'POST /api/projects': async (request) => {
@@ -76,14 +82,15 @@ const routes: Record<string, RouteHandler> = {
     if (!body.name) {
       return json({ error: 'name required' }, { status: 400 })
     }
-    const db = getDb()
-    const project = await db.insert(projects).values({
+    const sb = getSupabase()
+    const { data, error } = await sb.from('projects').insert({
       id: nanoid(), name: body.name, description: body.description,
-    }).returning().then(r => r[0])
-    return json(project)
+    }).select().single()
+    if (error) return json({ error: error.message }, { status: 500 })
+    return json(data)
   },
 
-  // Task operations
+  // Task/Chat operations
   'GET /api/tasks': async (request) => {
     const url = new URL(request.url)
     const projectId = url.searchParams.get('projectId')
@@ -91,24 +98,12 @@ const routes: Record<string, RouteHandler> = {
     if (!projectId) {
       return json({ error: 'projectId required' }, { status: 400 })
     }
-    const db = getDb()
-    const where = status
-      ? and(eq(tasks.projectId, projectId), eq(tasks.status, status))
-      : eq(tasks.projectId, projectId)
-    const result = await db.select({
-      id: tasks.id,
-      title: tasks.title,
-      description: tasks.description,
-      status: tasks.status,
-      assigneeId: tasks.assigneeId,
-      createdBy: tasks.createdBy,
-      createdAt: tasks.createdAt,
-      updatedAt: tasks.updatedAt,
-    })
-      .from(tasks)
-      .where(where)
-      .orderBy(desc(tasks.createdAt))
-    return json(result)
+    const sb = getSupabase()
+    let query = sb.from('tasks').select('*').eq('project_id', projectId).order('created_at', { ascending: false })
+    if (status) query = query.eq('status', status)
+    const { data, error } = await query
+    if (error) return json({ error: error.message }, { status: 500 })
+    return json(data)
   },
 
   'POST /api/tasks': async (request) => {
@@ -118,12 +113,13 @@ const routes: Record<string, RouteHandler> = {
     if (!body.projectId || !body.title || !createdBy) {
       return json({ error: 'projectId, title, and createdBy/auth required' }, { status: 400 })
     }
-    const db = getDb()
-    const task = await db.insert(tasks).values({
-      id: nanoid(), projectId: body.projectId, title: body.title,
-      description: body.description, createdBy,
-    }).returning().then(r => r[0])
-    return json(task)
+    const sb = getSupabase()
+    const { data, error } = await sb.from('tasks').insert({
+      id: nanoid(), project_id: body.projectId, title: body.title,
+      description: body.description, created_by: createdBy,
+    }).select().single()
+    if (error) return json({ error: error.message }, { status: 500 })
+    return json(data)
   },
 
   'POST /api/tasks/claim': async (request) => {
@@ -133,13 +129,11 @@ const routes: Record<string, RouteHandler> = {
     if (!body.taskId || !userId) {
       return json({ error: 'taskId and userId/auth required' }, { status: 400 })
     }
-    const db = getDb()
-    await db.update(tasks).set({
-      assigneeId: userId, status: 'running' as TaskStatus, updatedAt: new Date(),
-    }).where(eq(tasks.id, body.taskId))
-    await db.insert(events).values({
-      id: nanoid(), taskId: body.taskId, userId,
-      type: 'status_change' as EventType, content: 'claimed',
+    const sb = getSupabase()
+    await sb.from('tasks').update({ assignee_id: userId, status: 'running', updated_at: new Date().toISOString() }).eq('id', body.taskId)
+    await sb.from('events').insert({
+      id: nanoid(), task_id: body.taskId, user_id: userId,
+      type: 'status_change', content: 'claimed',
     })
     return json({ ok: true })
   },
@@ -151,11 +145,11 @@ const routes: Record<string, RouteHandler> = {
     if (!body.taskId || !body.status || !userId) {
       return json({ error: 'taskId, status, and userId/auth required' }, { status: 400 })
     }
-    const db = getDb()
-    await db.update(tasks).set({ status: body.status, updatedAt: new Date() }).where(eq(tasks.id, body.taskId))
-    await db.insert(events).values({
-      id: nanoid(), taskId: body.taskId, userId,
-      type: 'status_change' as EventType, content: body.status,
+    const sb = getSupabase()
+    await sb.from('tasks').update({ status: body.status, updated_at: new Date().toISOString() }).eq('id', body.taskId)
+    await sb.from('events').insert({
+      id: nanoid(), task_id: body.taskId, user_id: userId,
+      type: 'status_change', content: body.status,
     })
     return json({ ok: true })
   },
@@ -167,21 +161,23 @@ const routes: Record<string, RouteHandler> = {
     if (!taskId) {
       return json({ error: 'taskId required' }, { status: 400 })
     }
-    const db = getDb()
-    const result = await db.select({
-      id: events.id,
-      type: events.type,
-      content: events.content,
-      metadata: events.metadata,
-      userId: events.userId,
-      userName: users.name,
-      userType: users.type,
-      createdAt: events.createdAt,
-    })
-      .from(events)
-      .innerJoin(users, eq(events.userId, users.id))
-      .where(eq(events.taskId, taskId))
-      .orderBy(events.createdAt)
+    const sb = getSupabase()
+    const { data, error } = await sb.from('events')
+      .select('id, type, content, metadata, user_id, created_at, users!inner(name, type)')
+      .eq('task_id', taskId)
+      .order('created_at', { ascending: true })
+    if (error) return json({ error: error.message }, { status: 500 })
+    // Flatten user info
+    const result = (data || []).map((ev: any) => ({
+      id: ev.id,
+      type: ev.type,
+      content: ev.content,
+      metadata: ev.metadata,
+      userId: ev.user_id,
+      userName: ev.users?.name || 'Unknown',
+      userType: ev.users?.type || 'human',
+      createdAt: ev.created_at,
+    }))
     return json(result)
   },
 
@@ -192,24 +188,21 @@ const routes: Record<string, RouteHandler> = {
     if (!body.taskId || !body.type || !body.content || !userId) {
       return json({ error: 'taskId, type, content, and userId/auth required' }, { status: 400 })
     }
-    const db = getDb()
-    const event = await db.insert(events).values({
-      id: nanoid(), taskId: body.taskId, userId,
-      type: body.type as EventType, content: body.content, metadata: body.metadata,
-    }).returning().then(r => r[0])
-    return json(event)
+    const sb = getSupabase()
+    const { data, error } = await sb.from('events').insert({
+      id: nanoid(), task_id: body.taskId, user_id: userId,
+      type: body.type, content: body.content, metadata: body.metadata,
+    }).select().single()
+    if (error) return json({ error: error.message }, { status: 500 })
+    return json(data)
   },
 
   // Computer listing
   'GET /api/computers': async () => {
-    const db = getDb()
-    const result = await db.select({
-      id: computers.id,
-      name: computers.name,
-      status: computers.status,
-      lastSeenAt: computers.lastSeenAt,
-    }).from(computers)
-    return json(result)
+    const sb = getSupabase()
+    const { data, error } = await sb.from('computers').select('id, name, status, last_seen_at')
+    if (error) return json({ error: error.message }, { status: 500 })
+    return json(data)
   },
 }
 
@@ -223,7 +216,13 @@ export function handleApiRequest(request: Request): Promise<Response> | null {
   const key = `${method} ${path}`
   const handler = routes[key]
   if (handler) {
-    return handler(request)
+    return handler(request).then(res => {
+      // Add CORS headers
+      for (const [k, v] of Object.entries(corsHeaders())) {
+        res.headers.set(k, v)
+      }
+      return res
+    })
   }
 
   return Promise.resolve(json({ error: 'Not found' }, { status: 404 }))
