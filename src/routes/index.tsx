@@ -16,7 +16,7 @@ export const Route = createFileRoute('/')({
 })
 
 interface Chat { id: string; title: string; description: string | null; status: string; assigneeId: string | null; createdBy: string; createdAt: Date | null; updatedAt: Date | null }
-interface ChatEvent { id: string; type: string; content: string; metadata: string | null; userId: string; userName: string; userType: string; createdAt: Date | null }
+interface ChatEvent { id: string; type: string; content: string; metadata: string | null; userId: string; userName: string; userType: string; avatarUrl: string | null; createdAt: Date | null }
 type Theme = 'light' | 'dark'
 
 function HomePage() {
@@ -269,6 +269,23 @@ function HomeView({ onNewChat }: { onNewChat: (title: string) => void }) {
   )
 }
 
+/* ── Avatar ── */
+
+function Avatar({ name, avatarUrl, type, size = 'md' }: { name: string; avatarUrl?: string | null; type?: string; size?: 'sm' | 'md' | 'lg' }) {
+  const sizes = { sm: 'w-6 h-6 text-[10px]', md: 'w-8 h-8 text-[11px]', lg: 'w-9 h-9 text-sm' }
+  const colors = type === 'agent' ? 'bg-emerald-500' : 'bg-orange-500'
+  const cls = sizes[size]
+
+  if (avatarUrl) {
+    return <img src={avatarUrl} alt={name} className={`${cls} rounded-full object-cover shrink-0`} />
+  }
+  return (
+    <div className={`${cls} rounded-full ${colors} flex items-center justify-center font-medium text-white shrink-0`}>
+      {name?.[0]?.toUpperCase() || '?'}
+    </div>
+  )
+}
+
 /* ── Agents View ── */
 
 function AgentsView({ agents, computers }: { agents: any[]; computers: any[] }) {
@@ -287,9 +304,7 @@ function AgentsView({ agents, computers }: { agents: any[]; computers: any[] }) 
               const computer = computers.find(c => c.id === a.computer_id)
               return (
                 <div key={a.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900">
-                  <div className="w-9 h-9 rounded-full bg-emerald-500 flex items-center justify-center text-sm font-medium text-white">
-                    {a.name?.[0] || 'A'}
-                  </div>
+                  <Avatar name={a.name} avatarUrl={a.avatar_url} type="agent" size="lg" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{a.name}</span>
@@ -381,7 +396,7 @@ function ChatView({ events, currentUser, input, setInput, onSend, onKeyDown, eve
 
           if (isUser) {
             return (
-              <div key={ev.id} className="flex justify-end">
+              <div key={ev.id} className="flex justify-end gap-2">
                 <div className="max-w-[75%]">
                   {ev.type === 'message' && (
                     <div className="bg-gray-100 dark:bg-gray-800 rounded-2xl rounded-tr-md px-4 py-2.5 text-sm">
@@ -389,13 +404,16 @@ function ChatView({ events, currentUser, input, setInput, onSend, onKeyDown, eve
                     </div>
                   )}
                 </div>
+                <Avatar name={ev.userName} avatarUrl={ev.avatarUrl} type="human" size="sm" />
               </div>
             )
           }
 
           // Agent or other user messages (left-aligned)
           return (
-            <div key={ev.id} className="max-w-[85%]">
+            <div key={ev.id} className="flex gap-2 max-w-[85%]">
+              <Avatar name={ev.userName} avatarUrl={ev.avatarUrl} type={ev.userType} size="sm" />
+              <div className="min-w-0 flex-1">
               {ev.type === 'terminal' ? (
                 <div className="rounded-lg overflow-hidden border border-gray-200 dark:border-gray-800">
                   <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
@@ -424,6 +442,7 @@ function ChatView({ events, currentUser, input, setInput, onSend, onKeyDown, eve
                   </div>
                 </>
               )}
+              </div>
             </div>
           )
         })}

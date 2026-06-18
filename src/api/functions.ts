@@ -69,7 +69,7 @@ export const getTaskEvents = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     const sb = getSupabase()
     const { data: result } = await sb.from('events')
-      .select('id, type, content, metadata, user_id, created_at, users!inner(name, type)')
+      .select('id, type, content, metadata, user_id, created_at, users!inner(name, type, avatar_url)')
       .eq('task_id', data.taskId)
       .order('created_at', { ascending: true })
     return (result || []).map((ev: any) => ({
@@ -80,6 +80,7 @@ export const getTaskEvents = createServerFn({ method: 'GET' })
       userId: ev.user_id,
       userName: ev.users?.name || 'Unknown',
       userType: ev.users?.type || 'human',
+      avatarUrl: ev.users?.avatar_url || null,
       createdAt: ev.created_at,
     }))
   })

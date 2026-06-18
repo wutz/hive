@@ -139,7 +139,7 @@ const routes: Record<string, RouteHandler> = {
     }
     const sb = getSupabase()
     const { data, error } = await sb.from('events')
-      .select('id, type, content, metadata, user_id, created_at, users!inner(name, type)')
+      .select('id, type, content, metadata, user_id, created_at, users!inner(name, type, avatar_url)')
       .eq('task_id', taskId)
       .order('created_at', { ascending: true })
     if (error) return json({ error: error.message }, { status: 500 })
@@ -151,6 +151,7 @@ const routes: Record<string, RouteHandler> = {
       userId: ev.user_id,
       userName: ev.users?.name || 'Unknown',
       userType: ev.users?.type || 'human',
+      avatarUrl: ev.users?.avatar_url || null,
       createdAt: ev.created_at,
     }))
     return json(result)
@@ -187,6 +188,34 @@ const routes: Record<string, RouteHandler> = {
       .select('id, name, display_name, type, computer_id, avatar_url, created_at')
       .eq('type', 'agent')
       .order('created_at', { ascending: false })
+    if (error) return json({ error: error.message }, { status: 500 })
+    return json(data)
+  },
+
+  // Update user avatar
+  'POST /api/users/avatar': async (request) => {
+    const body = await request.json() as { userId?: string; avatarUrl?: string }
+    if (!body.userId || !body.avatarUrl) {
+      return json({ error: 'userId and avatarUrl required' }, { status: 400 })
+    }
+    const sb = getSupabase()
+    const { error } = await sb.from('users').update({ avatar_url: body.avatarUrl }).eq('id', body.userId)
+    if (error) return json({ error: error.message }, { status: 500 })
+    return json({ ok: true })
+  },
+
+  // Get current user info
+  'GET /api/users': async (request) => {
+    const url = new URL(request.url)
+    const userId = url.searchParams.get('userId')
+    if (!userId) {
+      return json({ error: 'userId required' }, { status: 400 })
+    }
+    const sb = getSupabase()
+    const { data, error } = await sb.from('users')
+      .select('id, name, display_name, type, avatar_url')
+      .eq('id', userId)
+      .single()
     if (error) return json({ error: error.message }, { status: 500 })
     return json(data)
   },
