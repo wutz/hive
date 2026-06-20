@@ -95,6 +95,10 @@ const routes: Record<string, RouteHandler> = {
       project_id: body.projectId || null,
     }).select().single()
     if (error) return json({ error: error.message }, { status: 500 })
+    // A chat is a group — the creator is the first participant.
+    await sb.from('task_participants').insert({
+      id: nanoid(), task_id: data!.id, user_id: createdBy,
+    })
     return json(data)
   },
 

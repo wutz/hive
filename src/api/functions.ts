@@ -37,6 +37,10 @@ export const createTask = createServerFn({ method: 'POST' })
       id: nanoid(), title: data.title,
       description: data.description, created_by: data.createdBy,
     }).select().single()
+    // A chat is a group — the creator is the first participant.
+    await sb.from('task_participants').insert({
+      id: nanoid(), task_id: task!.id, user_id: data.createdBy,
+    })
     return task
   })
 
