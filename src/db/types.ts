@@ -192,6 +192,27 @@ export type Database = {
         }
         Relationships: Relationship[]
       }
+      task_participants: {
+        Row: {
+          id: string
+          task_id: string
+          user_id: string
+          joined_at: string
+        }
+        Insert: {
+          id?: string
+          task_id: string
+          user_id: string
+          joined_at?: string
+        }
+        Update: {
+          id?: string
+          task_id?: string
+          user_id?: string
+          joined_at?: string
+        }
+        Relationships: Relationship[]
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>

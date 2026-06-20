@@ -140,3 +140,42 @@ export const listAgents = createServerFn({ method: 'GET' })
       .order('created_at', { ascending: false })
     return data || []
   })
+
+export const addTaskParticipant = createServerFn({ method: 'POST' })
+  .validator((data: { taskId: string; userId: string; addedBy?: string }) => data)
+  .handler(async ({ data }) => {
+    const sb = getSupabase()
+    const { data: existing } = await sb.from('task_participants')
+      .select('id').eq('task_id', data.taskId).eq('user_id', data.userId).maybeSingle()
+    if (existing) return { ok: true, already: true }
+    const { data: participant } = await sb.from('task_participants').insert({
+      id: nanoid(), task_id: data.taskId, user_id: data.userId,
+    }).select().single()
+    if (data.addedBy) {
+      await sb.from('events').insert({
+        id: nanoid(), task_id: data.taskId, user_id: data.addedBy,
+        type: 'status_change', content: `added_participant:${data.userId}`,
+      })
+    }
+    return { ok: true, participant: { id: participant!.id } }
+  })
+
+export const listTaskParticipants = createServerFn({ method: 'GET' })
+  .validator((data: { taskId: string }) => data)
+  .handler(async ({ data }) => {
+    const sb = getSupabase()
+    const { data: result } = await sb.from('task_participants')
+      .select('id, task_id, joined_at, users!inner(id, name, display_name, type, avatar_url)')
+      .eq('task_id', data.taskId)
+      .order('joined_at', { ascending: true })
+    return (result || []).map((p: any) => ({
+      id: p.id,
+      taskId: p.task_id,
+      joinedAt: p.joined_at,
+      userId: p.users?.id,
+      name: p.users?.name,
+      displayName: p.users?.display_name,
+      type: p.users?.type,
+      avatarUrl: p.users?.avatar_url,
+    }))
+  })

@@ -181,6 +181,92 @@ const routes: Record<string, RouteHandler> = {
     return json(data)
   },
 
+  // Verify a computer's API key and return the computer plus the agents it hosts.
+  // The CLI (running on the computer) uses this to authenticate and to learn which
+  // agents it should act on behalf of, including each agent's API key so it can
+  // post replies as that agent.
+  'GET /api/computers/me': async (request) => {
+    const apiKey = getApiKey(request)
+    if (!apiKey) return json({ error: 'Unauthorized' }, { status: 401 })
+    const sb = getSupabase()
+    const { data: computer } = await sb.from('computers').select('*').eq('api_key', apiKey).single()
+    if (!computer) return json({ error: 'Unauthorized' }, { status: 401 })
+    const { data: agents } = await sb.from('users')
+      .select('id, name, display_name, avatar_url, api_key, computer_id, created_at')
+      .eq('type', 'agent')
+      .eq('computer_id', computer.id)
+      .order('created_at', { ascending: true })
+    return json({
+      computer: { id: computer.id, name: computer.name, status: computer.status },
+      agents: (agents || []).map((a: any) => ({
+        id: a.id,
+        name: a.name,
+        displayName: a.display_name,
+        avatarUrl: a.avatar_url,
+        apiKey: a.api_key,
+      })),
+    })
+  },
+
+  // Computer heartbeat — marks the computer online and stamps last_seen_at.
+  'POST /api/computers/heartbeat': async (request) => {
+    const apiKey = getApiKey(request)
+    if (!apiKey) return json({ error: 'Unauthorized' }, { status: 401 })
+    const sb = getSupabase()
+    const { data: computer } = await sb.from('computers').select('id').eq('api_key', apiKey).single()
+    if (!computer) return json({ error: 'Unauthorized' }, { status: 401 })
+    await sb.from('computers').update({
+      status: 'online',
+      last_seen_at: new Date().toISOString(),
+    }).eq('id', computer.id)
+    return json({ ok: true })
+  },
+
+  // Add an agent (user) as a participant in a chat/task.
+  'POST /api/tasks/participants': async (request) => {
+    const body = await request.json() as { taskId?: string; userId?: string; addedBy?: string }
+    if (!body.taskId || !body.userId) {
+      return json({ error: 'taskId and userId required' }, { status: 400 })
+    }
+    const sb = getSupabase()
+    const { data: existing } = await sb.from('task_participants')
+      .select('id').eq('task_id', body.taskId).eq('user_id', body.userId).maybeSingle()
+    if (existing) return json({ ok: true, already: true })
+    const { data: participant } = await sb.from('task_participants').insert({
+      id: nanoid(), task_id: body.taskId, user_id: body.userId,
+    }).select().single()
+    if (body.addedBy) {
+      await sb.from('events').insert({
+        id: nanoid(), task_id: body.taskId, user_id: body.addedBy,
+        type: 'status_change', content: `added_participant:${body.userId}`,
+      })
+    }
+    return json({ ok: true, participant: { id: participant!.id } })
+  },
+
+  // List participants (agents/users) in a chat/task.
+  'GET /api/tasks/participants': async (request) => {
+    const url = new URL(request.url)
+    const taskId = url.searchParams.get('taskId')
+    if (!taskId) return json({ error: 'taskId required' }, { status: 400 })
+    const sb = getSupabase()
+    const { data, error } = await sb.from('task_participants')
+      .select('id, task_id, joined_at, users!inner(id, name, display_name, type, avatar_url)')
+      .eq('task_id', taskId)
+      .order('joined_at', { ascending: true })
+    if (error) return json({ error: error.message }, { status: 500 })
+    return json((data || []).map((p: any) => ({
+      id: p.id,
+      taskId: p.task_id,
+      joinedAt: p.joined_at,
+      userId: p.users?.id,
+      name: p.users?.name,
+      displayName: p.users?.display_name,
+      type: p.users?.type,
+      avatarUrl: p.users?.avatar_url,
+    })))
+  },
+
   // Agent listing
   'GET /api/agents': async () => {
     const sb = getSupabase()

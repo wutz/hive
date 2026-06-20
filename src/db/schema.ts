@@ -58,6 +58,13 @@ export const projectMembers = pgTable('project_members', {
   joinedAt: timestamp('joined_at').notNull().defaultNow(),
 })
 
+export const taskParticipants = pgTable('task_participants', {
+  id: varchar('id', { length: 32 }).primaryKey(),
+  taskId: varchar('task_id', { length: 32 }).notNull().references(() => tasks.id),
+  userId: varchar('user_id', { length: 32 }).notNull().references(() => users.id),
+  joinedAt: timestamp('joined_at').notNull().defaultNow(),
+})
+
 // Legacy tables - will be removed after migration
 export const channels = pgTable('channels', {
   id: varchar('id', { length: 32 }).primaryKey(),

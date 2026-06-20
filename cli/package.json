@@ -1,0 +1,23 @@
+{
+  "name": "hive",
+  "version": "0.1.0",
+  "description": "Hive CLI — connect your machine as a Hive agent and join a conversation",
+  "type": "module",
+  "bin": {
+    "hive": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.108.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
