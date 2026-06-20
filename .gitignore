@@ -6,3 +6,7 @@ dist
 .env
 app.config.timestamp_*
 local.db
+
+# Local agent configs — contain agent API keys, machine-specific paths
+.mcp.json
+mcp/hive-agent.sh

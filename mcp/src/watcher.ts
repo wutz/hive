@@ -12,8 +12,8 @@ import { createClient } from '@supabase/supabase-js'
 import { execSync } from 'child_process'
 
 const HIVE_URL = process.env.HIVE_URL || 'https://hive.wutz.workers.dev'
-const SUPABASE_URL = 'https://icbmhwuzmazxwsrcough.supabase.co'
-const SUPABASE_KEY = 'sb_publishable_Cp0lPDleO8haCvdYLm-0zA_3GHp3pZA'
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://icbmhwuzmazxwsrcough.supabase.co'
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || ''
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: false },
