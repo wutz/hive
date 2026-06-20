@@ -15,7 +15,7 @@ export const Route = createFileRoute('/')({
   },
 })
 
-interface Chat { id: string; title: string; description: string | null; status: string; assigneeId: string | null; createdBy: string; createdAt: Date | null; updatedAt: Date | null }
+interface Chat { id: string; title: string; description: string | null; status: string; assignee_id: string | null; created_by: string; created_at: string | null; updated_at: string | null }
 interface ChatEvent { id: string; type: string; content: string; metadata: string | null; userId: string; userName: string; userType: string; avatarUrl: string | null; createdAt: Date | null }
 type Theme = 'light' | 'dark'
 
@@ -125,6 +125,7 @@ function HomePage() {
       userId: currentUser.id,
       userName: currentUser.name,
       userType: currentUser.type,
+      avatarUrl: null,
       createdAt: new Date(),
     }
     setChatEvents(prev => [...prev, optimisticEvent])
@@ -151,8 +152,6 @@ function HomePage() {
       <aside className={`fixed inset-y-0 left-0 z-30 w-56 bg-gray-50 dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col transform transition-transform duration-200 md:relative md:translate-x-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-3 space-y-0.5">
           <SidebarItem icon={<IconEdit />} label="New Chat" onClick={() => { setActiveChatId(null); setView('home'); setSidebarOpen(false) }} />
-          <SidebarItem icon={<IconSearch />} label="Search" />
-          <SidebarItem icon={<IconRobot />} label="Agents" onClick={() => { setView('agents'); setActiveChatId(null); setSidebarOpen(false); loadAgents() }} />
           <SidebarItem icon={<IconSearch />} label="Search" />
           <SidebarItem icon={<IconRobot />} label="Agents" onClick={() => { setView('agents'); setActiveChatId(null); setSidebarOpen(false); loadAgents() }} />
         </div>
