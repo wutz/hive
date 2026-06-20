@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { initializeApp, listTasks, createTask, getTaskEvents, postEvent, listAgents, listComputers } from '#/api/functions'
+import { initializeApp, listTasks, createTask, getTaskEvents, postEvent, listAgents, listComputers, createAgent, addTaskParticipant, listTaskParticipants } from '#/api/functions'
 import { supabase } from '#/lib/supabase'
 
 export const Route = createFileRoute('/')({
@@ -35,6 +35,8 @@ function HomePage() {
   const [view, setView] = useState<'home' | 'agents'>('home')
   const [agents, setAgents] = useState<any[]>([])
   const [computers, setComputers] = useState<any[]>([])
+  const [participants, setParticipants] = useState<any[]>([])
+  const [showAddAgent, setShowAddAgent] = useState(false)
   const eventsEndRef = useRef<HTMLDivElement>(null)
 
   const activeChat = chatList.find(c => c.id === activeChatId)
@@ -70,12 +72,22 @@ function HomePage() {
         setChatEvents(result as ChatEvent[])
       } catch {}
     }
+    const loadParticipants = async () => {
+      try {
+        const result = await listTaskParticipants({ data: { taskId: activeChatId } })
+        setParticipants(result as any[])
+      } catch {}
+    }
     load()
+    loadParticipants()
     // Realtime subscription for event changes
     const channel = supabase
       .channel(`events-${activeChatId}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'events', filter: `task_id=eq.${activeChatId}` }, () => {
         load()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_participants', filter: `task_id=eq.${activeChatId}` }, () => {
+        loadParticipants()
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
@@ -142,6 +154,18 @@ function HomePage() {
     }
   }
 
+  const handleAddAgentToChat = async (agentUserId: string) => {
+    if (!activeChatId || !currentUser) return
+    try {
+      await addTaskParticipant({ data: { taskId: activeChatId, userId: agentUserId, addedBy: currentUser.id } })
+      const result = await listTaskParticipants({ data: { taskId: activeChatId } })
+      setParticipants(result as any[])
+    } catch (e) {
+      console.error('Failed to add agent:', e)
+    }
+    setShowAddAgent(false)
+  }
+
   return (
     <div className="flex h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors">
       {sidebarOpen && (
@@ -205,6 +229,11 @@ function HomePage() {
             onSend={handleSendMessage}
             onKeyDown={handleKeyDown}
             eventsEndRef={eventsEndRef}
+            participants={participants}
+            agents={agents}
+            showAddAgent={showAddAgent}
+            setShowAddAgent={setShowAddAgent}
+            onAddAgent={handleAddAgentToChat}
           />
         ) : (
           <HomeView
@@ -344,29 +373,85 @@ function AgentsView({ agents, computers }: { agents: any[]; computers: any[] }) 
           )}
         </div>
 
-        {/* Setup instructions */}
-        <div className="mt-8 p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
-          <h3 className="text-sm font-medium mb-2">Connect an Agent</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Register a computer and create an agent to connect Claude Code or Codex to Hive.</p>
-          <pre className="text-xs text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-950 p-3 rounded-md overflow-x-auto"><code>{`# Register computer
-curl -X POST https://hive.wutz.workers.dev/api/computers \\
-  -H "Content-Type: application/json" \\
-  -d '{"name":"my-machine","ownerName":"user"}'
-
-# Create agent
-curl -X POST https://hive.wutz.workers.dev/api/agents \\
-  -H "Authorization: Bearer <computer-api-key>" \\
-  -H "Content-Type: application/json" \\
-  -d '{"name":"Claude Code","computerId":"<computer-id>"}'`}</code></pre>
+        {/* Create agent — choose a computer to host it */}
+        <div className="mt-8">
+          <CreateAgentForm computers={computers} onCreated={() => {}} />
         </div>
       </div>
     </div>
   )
 }
 
+function CreateAgentForm({ computers, onCreated }: { computers: any[]; onCreated: () => void }) {
+  const [name, setName] = useState('')
+  const [computerId, setComputerId] = useState('')
+  const [computerApiKey, setComputerApiKey] = useState('')
+  const [created, setCreated] = useState<{ name: string; apiKey: string } | null>(null)
+  const [error, setError] = useState('')
+
+  const submit = async () => {
+    setError('')
+    if (!name.trim() || !computerId || !computerApiKey.trim()) {
+      setError('Name, computer, and computer API key are required')
+      return
+    }
+    try {
+      const result = await createAgent({ data: { name: name.trim(), computerId, computerApiKey: computerApiKey.trim() } }) as any
+      setCreated({ name: result.agent.name, apiKey: result.apiKey })
+      setName('')
+      onCreated()
+    } catch (e) {
+      setError((e as Error).message || 'Failed to create agent')
+    }
+  }
+
+  return (
+    <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-100 dark:border-gray-800">
+      <h3 className="text-sm font-medium mb-3">Create an Agent</h3>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Pick a computer to host this agent. The CLI running on that computer will respond on its behalf.</p>
+      <div className="space-y-2">
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Agent name (e.g. Claude Code)"
+          className="w-full bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 text-sm focus:outline-none"
+        />
+        <select
+          value={computerId}
+          onChange={(e) => setComputerId(e.target.value)}
+          className="w-full bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 text-sm focus:outline-none"
+        >
+          <option value="">Select a computer…</option>
+          {computers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </select>
+        <input
+          type="password"
+          value={computerApiKey}
+          onChange={(e) => setComputerApiKey(e.target.value)}
+          placeholder="Computer API key (hive_comp_…)"
+          className="w-full bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-700 rounded-md px-3 py-2 text-sm focus:outline-none font-mono"
+        />
+        {error && <p className="text-xs text-red-500">{error}</p>}
+        <button
+          onClick={submit}
+          className="w-full bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 rounded-md py-2 text-sm font-medium hover:opacity-90"
+        >Create Agent</button>
+      </div>
+      {created && (
+        <div className="mt-3 p-3 rounded-md bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
+          <p className="text-xs text-emerald-700 dark:text-emerald-400 mb-1">Agent “{created.name}” created. Save this key — it's shown once:</p>
+          <code className="text-xs text-emerald-800 dark:text-emerald-300 break-all">{created.apiKey}</code>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 /* ── Chat View (Codex-style chat bubbles) ── */
 
-function ChatView({ events, currentUser, input, setInput, onSend, onKeyDown, eventsEndRef }: {
+function ChatView({ events, currentUser, input, setInput, onSend, onKeyDown, eventsEndRef, participants, agents, showAddAgent, setShowAddAgent, onAddAgent }: {
   events: ChatEvent[]
   currentUser: { id: string; name: string; type: string } | null
   input: string
@@ -374,9 +459,52 @@ function ChatView({ events, currentUser, input, setInput, onSend, onKeyDown, eve
   onSend: () => void
   onKeyDown: (e: React.KeyboardEvent) => void
   eventsEndRef: React.RefObject<HTMLDivElement | null>
+  participants: any[]
+  agents: any[]
+  showAddAgent: boolean
+  setShowAddAgent: (v: boolean) => void
+  onAddAgent: (agentUserId: string) => void
 }) {
+  const participantIds = new Set(participants.map(p => p.userId))
+  const availableAgents = agents.filter(a => !participantIds.has(a.id))
   return (
     <>
+      {/* Participants bar */}
+      <div className="flex items-center gap-2 px-4 md:px-16 py-2 border-b border-gray-100 dark:border-gray-800 flex-wrap">
+        {participants.length === 0 && (
+          <span className="text-xs text-gray-400">No agents in this chat yet.</span>
+        )}
+        {participants.map(p => (
+          <div key={p.id} className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <Avatar name={p.name} avatarUrl={p.avatarUrl} type={p.type} size="sm" />
+            <span>{p.name}</span>
+          </div>
+        ))}
+        <div className="relative">
+          <button
+            onClick={() => setShowAddAgent(!showAddAgent)}
+            className="w-6 h-6 rounded-full border border-dashed border-gray-300 dark:border-gray-600 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex items-center justify-center text-sm"
+            title="Add agent to chat"
+          >+</button>
+          {showAddAgent && (
+            <div className="absolute top-7 left-0 z-20 w-48 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 max-h-64 overflow-y-auto">
+              {availableAgents.length === 0 ? (
+                <div className="px-3 py-2 text-xs text-gray-400">No more agents to add</div>
+              ) : availableAgents.map(a => (
+                <div
+                  key={a.id}
+                  onClick={() => onAddAgent(a.id)}
+                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+                >
+                  <Avatar name={a.name} avatarUrl={a.avatar_url} type="agent" size="sm" />
+                  <span className="text-sm">{a.name}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="flex-1 overflow-y-auto px-4 md:px-16 py-6 space-y-4">
         {events.length === 0 && (
           <p className="text-center text-gray-400 mt-12 text-sm">Start the conversation...</p>
